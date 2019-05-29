@@ -2,14 +2,19 @@
 # encoding=utf-8
 import requests
 from pyquery import PyQuery
-import chardet,re,pymysql,threading,time
+from Dbpool import *
+import chardet,re,pymysql,time
+
+pool = Dbpool("localhost", "3306", "root", "root", "test1")
+
 def GetHtml(url):
     print("正在获取%s页面---"%url)
     r = requests.get(url)
     return r
 
 def GetBrands():
-    mysql = pymysql.connect("localhost","root","root","test",charset="utf8")
+
+    mysql = pool.getConnection()
     url = "https://car.autohome.com.cn/AsLeftMenu/As_LeftListNew.ashx?typeId=1%20&brandId=0%20&fctId=0%20&seriesId=0"
     r = GetHtml(url)
     doc = PyQuery(r.text)
@@ -38,11 +43,11 @@ def GetBrands():
                mysql.rollback()
              
             # 关闭数据库连接
-    mysql.close()
+    pool.Commplete()
     return count
 
 def GetBrandsPage(start):
-    mysql = pymysql.connect("localhost","root","root","test",charset="utf8")
+    mysql = pool.getConnection()
     sql ="select count(1) from brands"
     cursor = mysql.cursor()
     try:
@@ -68,10 +73,11 @@ def GetBrandsPage(start):
     except:
        # 发生错误时回滚
        mysql.rollback()
+    pool.Commplete()
 
 
-def insertCars(cars,brand):
-    mysql = pymysql.connect("localhost","root","root","test",charset="utf8")
+def insertCars(cars,brand,mysql):
+
     cursor = mysql.cursor()
     for car in cars:
         sql = "insert into cars (car_name, sorce, type, engine, car_body, gearbox, price, img,brand) VALUES ('%s', '%s','%s','%s','%s','%s','%s','%s','%s')"%(car["car_name"],car["score"],car["type"],car["engine"],car["car_body"],car["gearbox"],car["price"],car["img"],brand)
@@ -83,7 +89,8 @@ def insertCars(cars,brand):
         except:
            # 发生错误时回滚
            mysql.rollback()
-    mysql.close()
+    # mysql.close()
+    
     return True
 
 def GetpageUrl(pages):  #获取分页信息
@@ -96,14 +103,14 @@ def GetpageUrl(pages):  #获取分页信息
         target_urls.append("https://car.autohome.com.cn"+qitem.attr("href"))
     return target_urls
 
-def getcars(car_page):
+def getcars(car_page,url):
+    mysql = pool.getConnection()
     car_ul = PyQuery(car_page)("div .list-cont-bg")
     cars = []
     for car_item in car_ul:
         car = {}
         car_p = PyQuery(car_item)
         car["img"] = "https://"+car_p.find(".list-cont-img").find("img").attr("src")
-        #print(car_p.find("div .main-title").html())
         main_title = car_p.find("div .main-title")
         car["car_name"] = main_title.find("a").text()
         car["score"] = main_title.find("span").text().strip(" ");
@@ -115,30 +122,38 @@ def getcars(car_page):
         car["engine"] = PyQuery(title_li[2]).find("span").text()
         car["gearbox"] = PyQuery(title_li[3]).find("a").text()
         cars.append(car)
-    return cars
+    insertCars(cars,url,mysql)
+    print("抓取%s完成，写入数据库完成"%url)
+    pool.Commplete()
+
 
 
 def GetCarsdata(urls):
     for url in urls:
         print("抓取：%s"%url[0])
-        # mysql = pymysql.connect("localhost","root","root","test",charset="utf8")
         r = GetHtml(url[0])
         doc = PyQuery(r.text)
-        cars = []
-        cars.extend(getcars(r.text))
+        t = threading.Thread(target=getcars, args=(r.text,url[1],))
+        print("开启抓车子线程")
+        t.start()
+        time.sleep(2)
         pages = doc("div .price-page")
         if pages:
             data = GetpageUrl(pages)
             print(data)
             for i in data:
                 car_page = GetHtml(i)
-                cars.extend(getcars(car_page.text))
-        insertCars(cars,url[1])
-        print("抓取%s完成，写入数据库完成"%url)
+                t = threading.Thread(target=getcars, args=(car_page.text,url[1],))
+                print("开启抓车子线程")
+                t.start()
 
-count = GetBrands()
-for i in range(int(count/10)+1):
-    start = i*10 
+
+
+# count = GetBrands()
+# 
+count = 215
+for i in range(int(count/5)+1):
+    start = i*5 
     print(start)
     urls = GetBrandsPage(start)
     if not urls:
@@ -148,5 +163,5 @@ for i in range(int(count/10)+1):
     print("开启线程：%d"%i)
     t.start()
     t.join()
-print("抓取完成")
+# print("抓取完成")
 
