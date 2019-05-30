@@ -4,7 +4,7 @@ import pymysql,time, threading
 class Dbpool:
     # minfree:最小空闲数，空闲小于此则创建，maxfree:反之，maxlinks:最大链接数
     
-    def __init__(self,host,port,username,password,dbname,minfree = 5,maxfree = 15,maxlinks = 20):
+    def __init__(self,host,port,username,password,dbname,minfree = 5,maxfree = 15,maxlinks = 30):
         self.minfree = minfree
         self.maxfree = maxfree
         self.maxlinks = maxlinks
@@ -28,16 +28,22 @@ class Dbpool:
             self.free_link.append([mysql,time.time()])
 
     def destory_freelink(self):
+
         print("destory_freelink")
+        lock = threading.Lock()
+        self.lock.acquire()
         mysql = self.free_link.pop(0)
-        mysql.close()
+        mysql[0].close()
+        self.lock.release() 
 
     def destory_usedlink(self,index):    #链接用完放到空闲链接中
+        self.lock.acquire()
         mysql = self.links_used.pop(index)
         if len(self.free_link) < self.maxfree:
             self.free_link.append(mysql[0])
         else:
-            mysql.close()
+            mysql[0][0].close()
+        self.lock.release()
 
     def getConnection(self):  #pid 线程id
         self.checkPool()
@@ -55,6 +61,7 @@ class Dbpool:
         return link
 
     def checkPool(self):
+
         if len(self.free_link) < self.minfree:
             self.create_new_freelink(self.minfree-len(self.free_link))
         elif len(self.free_link) > self.maxfree:
@@ -68,12 +75,11 @@ class Dbpool:
 
     def Commplete(self):
         t = threading.currentThread()
-        self.lock.acquire() 
         for i in  range(len(self.links_used)):
             if self.links_used[i][1] == self.getpid():
                 self.destory_usedlink(i)
                 break
-        self.lock.release()
+        
         print("释放一个链接，当前freelink:%d,links_used:%d" % (len(self.free_link),len(self.links_used)))
         self.checkPool()
     def getpid(self):

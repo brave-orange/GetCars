@@ -13,3 +13,6 @@ class RedisDb:
         conn = redis.Redis(connection_pool=self.pool)
         res = conn.lrange(name,start,stop)
         return res
+    def llen(self,name):
+        conn = redis.Redis(connection_pool=self.pool)
+        return conn.llen(name)
