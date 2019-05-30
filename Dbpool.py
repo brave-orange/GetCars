@@ -45,10 +45,10 @@ class Dbpool:
         if len(self.links_used) > self.maxlinks:
             print("链接满了%d" % len(self.links_used))
             while 1:
-                time.sleep(10)
+                time.sleep(20)
                 if len(self.links_used) < self.maxlinks:
                         break
-                if time.time() > now + 200:
+                if time.time() > now + 600:
                     return None     #连接池满等待超时
         link = self.getFreelink()
         self.checkPool()

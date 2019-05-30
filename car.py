@@ -77,20 +77,18 @@ def GetBrandsPage(start):
 
 
 def insertCars(cars,brand,mysql):
-
     cursor = mysql.cursor()
     for car in cars:
         sql = "insert into cars (car_name, sorce, type, engine, car_body, gearbox, price, img,brand) VALUES ('%s', '%s','%s','%s','%s','%s','%s','%s','%s')"%(car["car_name"],car["score"],car["type"],car["engine"],car["car_body"],car["gearbox"],car["price"],car["img"],brand)
-
         try:
             cursor.execute(sql)
             mysql.commit()
            
         except:
            # 发生错误时回滚
+           
            mysql.rollback()
     # mysql.close()
-    
     return True
 
 def GetpageUrl(pages):  #获取分页信息
@@ -103,8 +101,7 @@ def GetpageUrl(pages):  #获取分页信息
         target_urls.append("https://car.autohome.com.cn"+qitem.attr("href"))
     return target_urls
 
-def getcars(car_page,url):
-    mysql = pool.getConnection()
+def getcars(car_page,brand,mysql):
     car_ul = PyQuery(car_page)("div .list-cont-bg")
     cars = []
     for car_item in car_ul:
@@ -122,46 +119,42 @@ def getcars(car_page,url):
         car["engine"] = PyQuery(title_li[2]).find("span").text()
         car["gearbox"] = PyQuery(title_li[3]).find("a").text()
         cars.append(car)
-    insertCars(cars,url,mysql)
-    print("抓取%s完成，写入数据库完成"%url)
-    pool.Commplete()
+    insertCars(cars,brand,mysql)
+    print("抓取%s完成，写入数据库完成"%brand)
 
 
 
 def GetCarsdata(urls):
+    mysql = pool.getConnection()
     for url in urls:
         print("抓取：%s"%url[0])
         r = GetHtml(url[0])
         doc = PyQuery(r.text)
-        t = threading.Thread(target=getcars, args=(r.text,url[1],))
-        print("开启抓车子线程")
-        t.start()
-        time.sleep(2)
+        getcars(r.text,url[1],mysql) #第一页
         pages = doc("div .price-page")
         if pages:
             data = GetpageUrl(pages)
             print(data)
             for i in data:
                 car_page = GetHtml(i)
-                t = threading.Thread(target=getcars, args=(car_page.text,url[1],))
-                print("开启抓车子线程")
-                t.start()
-
-
+                getcars(car_page.text,url[1],mysql)
+                time.sleep(5)
+    pool.Commplete()
+    print("结束一个线程")
 
 # count = GetBrands()
-# 
 count = 215
-for i in range(int(count/5)+1):
-    start = i*5 
+for i in range(int(count/10)+1):
+    start = i*10 
     print(start)
     urls = GetBrandsPage(start)
     if not urls:
         print("没有目标地址")
-        break;
+        continue
     t = threading.Thread(target=GetCarsdata, args=(urls,))
     print("开启线程：%d"%i)
     t.start()
     t.join()
-# print("抓取完成")
+    time.sleep(5)
+print("抓取完成")
 
